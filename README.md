@@ -1,39 +1,49 @@
 # audiocut-tera
 
-`audiocut-tera` is a Codex skill for editing podcast or spoken-word audio by combining:
+`audiocut-tera` is a Codex skill for editing podcast and other spoken-word audio from a Feishu/Lark transcript plus the original source file.
 
-- a Feishu/Lark transcript document
-- existing document comments such as `删除` and `金句`
-- the original local audio file
+It is built for workflows where:
 
-It is designed for workflows where you want to turn a rough spoken recording into cleaner podcast cuts such as:
+- the transcript lives in a Feishu/Lark doc
+- existing comments such as `删除` and `金句` represent edit intent
+- the source audio is local
+- the desired output is one or more polished `m4a` cuts
 
-- `v1`: remove obvious false starts
-- `v2`: remove interruptions, long filler sections, and awkward pauses
-- `v3`: aggressively compress pauses for a tighter, more produced result
+Typical outputs include:
 
-## What this skill does
+- `v1`: remove false starts and obvious junk
+- `v2`: remove interruptions, filler segments, and awkward long pauses
+- `v3`: aggressively tighten pacing by compressing long silences
+
+## What this skill can do
 
 This skill helps Codex:
 
-1. Read a Feishu transcript document with `lark-cli`
+1. Read a Feishu/Lark transcript document with `lark-cli`
 2. Read existing Feishu comments from that document
 3. Map timestamped transcript text back to the source audio
-4. Prepend `金句` clips to the beginning as a cold open
+4. Prepend `金句` clips as a cold open
 5. Remove `删除` clips from the main body
-6. Optionally detect and compress long pauses from the waveform
-7. Export edited `m4a` outputs and a short edit note
+6. Detect long silence ranges from the waveform
+7. Export edited `m4a` files and a short edit note
 
-## Repository structure
+## Good fit
 
-```text
-audiocut-tera/
-├── README.md
-├── SKILL.md
-└── scripts/
-    ├── analyze_silence.swift
-    └── compose_audio.swift
-```
+Use this skill for:
+
+- podcasts
+- interviews
+- spoken essays
+- transcript-first voice content
+
+## Not a good fit
+
+This skill is not intended for:
+
+- music production
+- multitrack editing
+- EQ, compression, or mastering
+- denoising or audio restoration
 
 ## Requirements
 
@@ -49,24 +59,18 @@ This repository assumes the editing machine can run Swift scripts locally.
 
 ## Install
 
-If this repository is public on GitHub, install it with:
+Install directly from GitHub:
 
 ```bash
-npx skills add <YOUR_GITHUB_REPO_URL> -y -g
+npx skills add https://github.com/helloteraslab/audiocut-feishu -y -g
 ```
 
-Example:
-
-```bash
-npx skills add https://github.com/<your-name>/audiocut-tera -y -g
-```
-
-## Typical usage
+## Quick start
 
 Ask Codex something like:
 
 ```text
-Please use audiocut-tera to edit this podcast using the Feishu transcript doc and the original MP3.
+Please use audiocut-tera to edit this podcast using the Feishu transcript doc and the original local audio file.
 ```
 
 Or more specifically:
@@ -77,15 +81,26 @@ Use audiocut-tera. Read the Feishu doc, prepend all 金句 comments, remove all 
 
 ## Recommended workflow
 
-1. Prepare a Feishu transcript doc with speaker timestamps like `说话人 1 04:40`
-2. Add comment markers such as:
+1. Prepare a Feishu transcript doc with speaker timestamps such as `说话人 1 04:40`
+2. Add comments such as:
    - `删除`
    - `金句`
 3. Provide the original local audio path
 4. Let Codex fetch the doc and comments
 5. Generate one or more edited versions
 
-## Scripts included
+## Repository structure
+
+```text
+audiocut-feishu/
+├── README.md
+├── SKILL.md
+└── scripts/
+    ├── analyze_silence.swift
+    └── compose_audio.swift
+```
+
+## Scripts
 
 ### `scripts/analyze_silence.swift`
 
@@ -95,7 +110,7 @@ Analyzes the source audio and prints long silence ranges:
 start_seconds<TAB>end_seconds<TAB>duration_seconds
 ```
 
-This is useful for aggressive edits where pauses longer than 1 second should be shortened.
+Useful for aggressive edits where pauses longer than 1 second should be shortened.
 
 ### `scripts/compose_audio.swift`
 
@@ -104,13 +119,13 @@ Builds a new audio file by:
 - prepending selected quote ranges
 - removing selected delete ranges from the body
 
-Example shape:
+Example:
 
 ```bash
 swift scripts/compose_audio.swift '<INPUT>' '<OUTPUT>' '<INTRO_RANGES>' '<DELETE_RANGES>'
 ```
 
-Where the ranges are passed as:
+Where ranges are passed as:
 
 ```text
 12.0:18.5,65.2:71.0
@@ -118,9 +133,9 @@ Where the ranges are passed as:
 
 ## Known limitation
 
-Feishu's public API does not reliably recreate the same fine-grained "selected text comment" behavior available in the editor UI for this kind of long transcript block.
+Feishu's public API does not reliably reproduce the same fine-grained text selection behavior available in the editor UI for long transcript blocks.
 
-This means:
+In practice this means:
 
 - reading existing comments works well
 - writing new comments with exact selection precision is not reliably supported
@@ -131,30 +146,25 @@ So this skill is best used for:
 - generating audio edits directly
 - suggesting new cut points in plain text when needed
 
-## Good fit
+## Privacy notes
 
-Use this skill when editing:
+This repository contains only:
 
-- podcasts
-- interview recordings
-- spoken essays
-- transcript-first voice content
+- the Codex skill definition
+- two Swift helper scripts
 
-## Not a good fit
+It does **not** need to include:
 
-This skill is not intended for:
+- source audio files
+- transcript exports
+- private Feishu document URLs
+- local machine paths
 
-- music production
-- multitrack editing
-- EQ, compression, or mastering
-- denoising or audio restoration
+## Publishing
 
-## Publishing notes
-
-If you want to share this skill publicly:
+To publish your own copy:
 
 1. Create a GitHub repository
 2. Push this directory as the repository contents
-3. Test installation from the GitHub URL using `npx skills add`
+3. Test installation using `npx skills add`
 4. Share the repository URL
-
