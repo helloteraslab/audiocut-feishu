@@ -1,6 +1,6 @@
-# audiocut-tera
+# audiocut-feishu
 
-`audiocut-tera` is a Codex skill for editing podcast and other spoken-word audio from a Feishu/Lark transcript plus the original source file.
+`audiocut-feishu` is a Codex skill for editing podcast and other spoken-word audio from a Feishu/Lark transcript plus the original source file.
 
 It is built for workflows where:
 
@@ -103,7 +103,7 @@ Use audiocut-tera. Read the Feishu doc, prepend all 金句 comments, remove all 
 你可以直接把下面这段发给 Codex：
 
 ```text
-请使用 audiocut-tera 帮我剪辑这期播客。
+请使用 audiocut-feishu 帮我剪辑这期播客。
 
 飞书文稿链接：
 <在这里粘贴飞书文稿链接>
@@ -122,7 +122,7 @@ Use audiocut-tera. Read the Feishu doc, prepend all 金句 comments, remove all 
 如果你想写得更短，也可以直接说：
 
 ```text
-请使用 audiocut-tera，基于这个飞书文稿和原始音频，输出一版 v3 播客成片。
+请使用 audiocut-feishu，基于这个飞书文稿和原始音频，输出一版 v3 播客成片。
 ```
 
 ## Recommended workflow
