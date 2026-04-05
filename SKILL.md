@@ -1,9 +1,9 @@
 ---
-name: audiocut-tera
+name: audiocut-feishu
 description: Use this skill when the user wants to edit a podcast or spoken-word audio file by combining a Feishu/Lark transcript document with the original audio file. This skill is for workflows that read Feishu doc content and comments via lark-cli, map transcript timestamps back to audio, prepend highlighted quote segments, remove delete-marked segments, and optionally do aggressive pause compression based on waveform-detected silences.
 ---
 
-# Audiocut Tera
+# Audiocut Feishu
 
 This skill is for a podcast-editing workflow where:
 
@@ -211,4 +211,3 @@ If the user asks for a more polished podcast cut and does not specify otherwise:
 - remove explicit `删除` ranges
 - do one additional tightening pass on obvious interruptions
 - compress long pauses only if the user asks for a more aggressive edit
-

@@ -70,13 +70,13 @@ npx skills add https://github.com/helloteraslab/audiocut-feishu -y -g
 Ask Codex something like:
 
 ```text
-Please use audiocut-tera to edit this podcast using the Feishu transcript doc and the original local audio file.
+Please use audiocut-feishu to edit this podcast using the Feishu transcript doc and the original local audio file.
 ```
 
 Or more specifically:
 
 ```text
-Use audiocut-tera. Read the Feishu doc, prepend all 金句 comments, remove all 删除 comments, and make an aggressive v3 cut.
+Use audiocut-feishu. Read the Feishu doc, prepend all 金句 comments, remove all 删除 comments, and make an aggressive v3 cut.
 ```
 
 ## 中文使用说明
