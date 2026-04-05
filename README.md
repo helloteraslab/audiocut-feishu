@@ -79,6 +79,52 @@ Or more specifically:
 Use audiocut-tera. Read the Feishu doc, prepend all 金句 comments, remove all 删除 comments, and make an aggressive v3 cut.
 ```
 
+## 中文使用说明
+
+这个 skill 最适合这样的场景：
+
+- 你已经有一份飞书转写文稿
+- 文稿里最好已经有人加了 `删除` 或 `金句` 评论
+- 你手上还有对应的原始音频文件
+
+用户在调用这个 skill 时，通常需要提供：
+
+1. 飞书文稿链接
+2. 原始音频文件路径
+3. 你希望输出什么版本
+   - 例如：基础清理版、`v2` 精修版、`v3` 激进压缩版
+
+如果只有文稿，没有音频，这个 skill 只能帮你分析和建议剪辑点，不能真正导出成片。
+
+如果只有音频，没有文稿，这个 skill 只能做静音压缩或部分节奏优化，不能完整利用 `删除` / `金句` 这类评论驱动剪辑。
+
+## 中文提示词模板
+
+你可以直接把下面这段发给 Codex：
+
+```text
+请使用 audiocut-tera 帮我剪辑这期播客。
+
+飞书文稿链接：
+<在这里粘贴飞书文稿链接>
+
+原始音频文件路径：
+<在这里粘贴本地音频文件路径>
+
+剪辑要求：
+1. 读取文稿中的 删除 和 金句 评论
+2. 把所有 金句 片段复制并放到开头
+3. 删除所有 删除 片段
+4. 再做一版 v2 精修 / v3 激进压缩（按你的需要二选一）
+5. 输出成片音频，并附一份编辑说明
+```
+
+如果你想写得更短，也可以直接说：
+
+```text
+请使用 audiocut-tera，基于这个飞书文稿和原始音频，输出一版 v3 播客成片。
+```
+
 ## Recommended workflow
 
 1. Prepare a Feishu transcript doc with speaker timestamps such as `说话人 1 04:40`
