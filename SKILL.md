@@ -94,9 +94,15 @@ Do not apply automatic filler trimming or automatic pause compression in `v1`.
 
 Start with all `v1` behavior, then additionally apply the editing rules below:
 
-- compress long pauses
-- remove strict repetitions
-- remove high-confidence filler / connector words with long air before or after
+ - compress long pauses
+ - remove high-confidence filler / connector words with long air before or after
+ - remove strict repetitions
+
+Use the strict repetition helper when available:
+
+- `scripts/detect_strict_repetition.py`
+- `scripts/finalize_v2_plan.py`
+- `scripts/render_audio_plan_ffmpeg.py`
 
 ## Editing rules
 
@@ -163,6 +169,16 @@ Default behavior:
 
 - trim it down to a single surviving copy
 
+Operational rule:
+
+- if a repeated fragment is immediately followed by valid content that reuses the final copy, preserve that final copy and trim only the leading duplicates
+
+Example:
+
+- `重复,重复,重复,重复学习的最好的方法`
+  - trim the leading redundant `重复`
+  - preserve the last `重复` so the sentence remains `重复学习的最好的方法`
+
 #### Near-duplicate sentence repetition
 
 Examples:
@@ -218,10 +234,22 @@ For `金句`:
 4. Build `delete_ranges` from `删除`
 5. If user wants `v2`, add:
    - long-pause compression ranges
-   - strict repetition trims
    - high-confidence filler trims
+   - strict repetition trims from `scripts/detect_strict_repetition.py`
+   - merge those repetition trims into the final `delete_ranges` with `scripts/finalize_v2_plan.py`
 6. Export the cut
 7. Save an edit note
+
+Recommended `v2` merge order:
+
+1. explicit comment deletions
+2. long-pause compression
+3. high-confidence filler trims
+4. strict repetition trims
+
+Apply strict repetition after the comment-driven plan is known, so repeated filler text that survives comments can still be tightened automatically.
+
+Use `scripts/render_audio_plan_ffmpeg.py` for stable `wav` / `mp3` export from the finalized plan.
 
 ## Output expectations
 

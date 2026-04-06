@@ -145,8 +145,27 @@ It does **not** automatically remove filler words, repetitions, or long pauses.
 `v2` includes everything in `v1`, plus automatic fine trimming:
 
 - compress pauses longer than `1s`
-- remove strict repetitions
 - remove high-confidence filler / connector words with obvious air before or after
+- remove strict repetitions
+
+The repository also includes a helper for strict repetition detection:
+
+- `scripts/detect_strict_repetition.py`
+- `scripts/finalize_v2_plan.py`
+- `scripts/render_audio_plan_ffmpeg.py`
+
+It is designed to catch cases like `重复,重复,重复,重复学习` and preserve the final surviving copy that naturally connects into the real sentence.
+
+In the maintained `v2` flow, run strict repetition detection first, then use `scripts/finalize_v2_plan.py` to merge those ranges into the final `delete_ranges` before export.
+
+For stable `wav` / `mp3` export in the maintained setup, render the finalized plan with `scripts/render_audio_plan_ffmpeg.py`.
+
+The intended `v2` execution order is:
+
+1. explicit `删除` comment ranges
+2. long-pause compression
+3. high-confidence filler trimming
+4. strict repetition trimming
 
 ## Editing rules
 
@@ -202,6 +221,11 @@ Default behavior:
 
 - strict repetition can be trimmed automatically
 - near-duplicate sentence repetition should prefer explicit human comments
+
+For strict repetition, the intended behavior is:
+
+- remove the leading repeated copies
+- preserve the last copy when it connects naturally into the following valid phrase
 
 ### Cut boundaries
 
