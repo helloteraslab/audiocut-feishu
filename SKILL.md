@@ -1,213 +1,260 @@
 ---
 name: audiocut-feishu
-description: Use this skill when the user wants to edit a podcast or spoken-word audio file by combining a Feishu/Lark transcript document with the original audio file. This skill is for workflows that read Feishu doc content and comments via lark-cli, map transcript timestamps back to audio, prepend highlighted quote segments, remove delete-marked segments, and optionally do aggressive pause compression based on waveform-detected silences.
+description: Use this skill when the user wants to edit spoken-word audio by generating a high-quality timestamped transcript, publishing that transcript to a Feishu/Lark doc for human comments, and then cutting the source audio from those comments plus optional fine-trim rules.
 ---
 
 # Audiocut Feishu
 
-This skill is for a podcast-editing workflow where:
+This skill is for a transcript-first spoken-audio editing workflow where:
 
-- source audio is a local file, usually MP3
-- transcript lives in a Feishu/Lark doc
-- comments such as `删除` and `金句` act as edit instructions
-- output is one or more edited `m4a` versions plus a short edit note
+- the user provides a local source audio file
+- Codex generates a fine-grained transcript locally
+- Codex publishes a commentable transcript doc to Feishu/Lark
+- the user reviews that doc and comments with edit intent
+- Codex returns to the commented doc and performs the cut
 
 ## When to use
 
 Use this skill when the user asks to:
 
-- cut a podcast from a Feishu transcript doc
-- prepend `金句` clips to the beginning
-- delete `删除` clips from the body
-- tighten pacing by compressing long pauses
-- produce multiple edit passes such as `v1`, `v2`, `v3`
+- create a commentable Feishu transcript doc from local audio
+- cut audio from Feishu comments such as `删除` and `金句`
+- produce a rough `v1` cut or a finer `v2` cut
+- tighten spoken-word pacing by removing long pauses, strict repetitions, and high-confidence filler words
 
 Do not use this skill for:
 
-- musical editing
+- music production
 - multi-track mixing
-- noise reduction / EQ / mastering
-- precise in-doc comment authoring via Feishu UI selection ranges
+- mastering, EQ, or denoising
+- precise recreation of Feishu editor UI selection comments via API
 
-## What is already proven to work
+## Required inputs
 
-This workflow has already been validated locally:
+For full mode:
 
-1. Read Feishu doc content with `lark-cli docs +fetch`
-2. Read Feishu comments with `lark-cli api GET /open-apis/drive/v1/files/<token>/comments`
-3. Map comment quotes back to transcript timestamps
-4. Export edited audio locally with Swift + `AVFoundation`
-5. Analyze long silences from the original audio waveform
-6. Generate tighter edit passes by combining:
-   - explicit delete ranges
-   - quote-prepend ranges
-   - silence-compression ranges
-
-## Important limitation
-
-Feishu's open API does not reliably support the same precise "hand-selected text comment" behavior as the editor UI for this long transcript format.
-
-You may be able to create block-anchored comments, but do not assume you can accurately recreate the user's exact in-document text selection. If precision matters, prefer:
-
-- reading existing comments from the doc
-- reporting suggested new cuts in plain text
-- proceeding with audio editing directly
-
-## Inputs you need
-
-- Feishu doc URL
 - local audio file path
-- user intent:
-  - comment-driven cut
-  - pause compression
-  - quote-first cold open
-  - conservative or aggressive pacing
+- working `lark-cli` configuration
+- user-authorized Feishu account
+- local ASR runtime (`faster-whisper`)
 
-## Standard workflow
+For simplified mode:
 
-### 1. Fetch transcript and comments
+- Feishu transcript doc URL
+- local audio file path
 
-Run:
+## Workflow
 
-```bash
-export PATH="$HOME/.local/node/bin:$PATH"
-lark-cli docs +fetch --doc '<DOC_URL>' --format json
-lark-cli api GET /open-apis/drive/v1/files/<DOC_TOKEN>/comments --params '{"file_type":"docx","page_size":100}'
-```
+### Phase 1: Create the transcript doc
 
-Persist them locally if you need repeatable processing.
+1. User gives Codex a local audio file.
+2. Codex runs a local Whisper-family ASR model and generates fine-grained timestamps.
+3. Codex creates a new Feishu doc and writes the transcript there in a comment-friendly layout.
 
-### 2. Extract timestamped utterances
-
-The transcript format uses lines like:
+Preferred transcript layout:
 
 ```text
-说话人 1 04:40
+[0001] 00:01.060 - 00:03.960  Hello,这是一个测试文件
+[0002] 00:03.960 - 00:08.320  第一步我要测试的关于停顿功能
 ```
 
-Parse `MM:SS` and treat each speaker block as an utterance span until the next timestamp.
+Each sentence should be on its own line so the user can comment directly on that line.
 
-Use this to:
+### Phase 2: Human review in Feishu
 
-- locate `删除` comment quotes
-- locate `金句` comment quotes
-- estimate subranges inside long utterances
+The user comments in Feishu with labels such as:
 
-### 3. Build explicit ranges
+- `删除`
+- `金句`
+- `修改`
 
-Create three classes of ranges:
+The skill is optimized for `删除` and `金句`.
 
-- `intro_ranges`
-  - quote-worthy clips to prepend at the beginning
-- `delete_ranges`
-  - explicit removals from comments or user instructions
-- `silence_ranges`
-  - the removable tail of long pauses
+### Phase 3: Edit execution
 
-For aggressive versions:
+When the user says review is complete and asks for a cut, ask whether they want:
 
-- detect waveform silences longer than 1 second
-- keep roughly 0.3 seconds of each long pause
+- `v1` rough cut
+- `v2` fine cut
+
+If the user already clearly asks for rough cut / fine cut / `v1` / `v2`, do not ask again.
+
+## Version definitions
+
+### `v1` rough cut
+
+Execute only explicit human comments:
+
+- remove content marked with `删除`
+- prepend clips marked with `金句`
+
+Do not apply automatic filler trimming or automatic pause compression in `v1`.
+
+### `v2` fine cut
+
+Start with all `v1` behavior, then additionally apply the editing rules below:
+
+- compress long pauses
+- remove strict repetitions
+- remove high-confidence filler / connector words with long air before or after
+
+## Editing rules
+
+### 1. Priority
+
+1. Human Feishu comments override automatic rules.
+2. If a segment is ambiguous, preserve it.
+3. First decide *what* to cut, then decide *where the cut should land*.
+
+### 2. Long pause rule
+
+A long pause means:
+
+- continuous no-voice region longer than `1.0s`
+
+Default handling:
+
+- keep about `0.30s`
 - remove the rest
 
-For conservative versions:
+If a pause appears to carry emotional weight or dramatic timing, be conservative and keep more.
 
-- keep more pause, usually 0.5 to 0.8 seconds
+### 3. Filler / connector rule
 
-### 4. Export the edit
+Common filler candidates:
 
-Use the bundled scripts:
+- `然后`
+- `然后呢`
+- `就是`
+- `那个`
+- `这个`
+- `呢`
+- `呀`
+- `对`
+- `嗯`
+- `呃`
+- `啊`
 
-- [`compose_audio.swift`](scripts/compose_audio.swift)
-- [`analyze_silence.swift`](scripts/analyze_silence.swift)
+Delete a filler only when all of the following are true:
 
-Typical export pattern:
+- it carries little semantic information
+- deleting it does not break the sentence backbone
+- it has obvious air around it
 
-```bash
-swift scripts/compose_audio.swift '<INPUT>' '<OUTPUT>' '<INTRO_RANGES>' '<DELETE_RANGES>'
-```
+Suggested high-confidence threshold:
 
-Range syntax is:
+- leading air `>= 0.18s`, or
+- trailing air `>= 0.18s`, or
+- combined air `>= 0.30s`
 
-```text
-start1:end1,start2:end2,start3:end3
-```
+Do not delete a filler if it functions as real emphasis, reply logic, or object reference.
 
-in seconds.
+### 4. Repetition rule
 
-### 5. Produce versions
+#### Strict repetition
 
-Recommended naming:
+Examples:
 
-- `_去掉开头试录`
-- `_按飞书评论`
-- `_v2`
-- `_v3`
+- `明显明显`
+- `我我觉得`
+- `重复,重复,重复`
 
-Use `v2` for additional manual tightening. Use `v3` for aggressive pause compression.
+Default behavior:
 
-### 6. Write a short edit note
+- trim it down to a single surviving copy
 
-Always save a plain-text note beside the output file that includes:
+#### Near-duplicate sentence repetition
 
-- prepended quote ranges
-- deleted ranges
-- whether pause compression was applied
-- whether timing inside long utterances was estimated
+Examples:
 
-## Heuristics
+- the same sentence is immediately said again
+- the same meaning is restated in a very short time window
 
-### Good `删除` candidates
+Default behavior:
 
-- obvious false starts
-- setup chatter before the real opening
-- repeated question setup
-- "等一下", "我查一下", "我那个飞书哪去了"
-- bodily interruption / recording interruption
-- repeated filler with long air before and after
+- if human comments explicitly marked it, follow the comment
+- otherwise do not automatically delete whole sentences unless confidence is very high
 
-### Good `金句` candidates
+### 5. Cut-boundary rule
 
-- strong thesis statements
-- emotionally vivid lines
-- concise worldview lines
-- clips that still work when heard before the main body
+Cuts should be decided in three layers:
 
-Avoid quote-prepending clips that need too much context.
+1. Semantic boundary
+   - prefer sentence edges, repetition edges, or filler edges
+2. Acoustic boundary
+   - prefer weak-energy regions or short silences
+3. Listening boundary
+   - do not chop off word endings or initials
 
-## Scripts
+Default cut padding:
 
-### `scripts/analyze_silence.swift`
+- before a removed fragment: keep about `0.03s - 0.08s`
+- after a removed fragment: keep about `0.08s - 0.18s`
 
-Detects long silences from the source audio and prints:
+If a word ends with a clearly audible tail, favor more post-cut air.
 
-```text
-start_seconds<TAB>end_seconds<TAB>duration_seconds
-```
+### 6. Quote-prepend rule
 
-### `scripts/compose_audio.swift`
+For `金句`:
 
-Builds a new audio file by:
+- copy the quote to the beginning
+- keep the original body occurrence unless the user says otherwise
+- leave a short trailing breath after the prepended quote, usually `0.12s - 0.20s`
 
-1. prepending `intro_ranges`
-2. appending the source body with `delete_ranges` removed
+## Standard operating sequence
 
-The output format is `m4a`.
+### A. If no transcript doc exists yet
 
-## Validation
+1. Transcribe the audio locally with `faster-whisper`
+2. Save a machine-readable timestamp file locally
+3. Create a Feishu doc from the timestamped transcript
+4. Give the doc link to the user for comment review
 
-After export:
+### B. If the user already reviewed the doc
 
-- check file exists
-- run `afinfo '<OUTPUT>'`
-- compare duration against the prior version
-- summarize what changed
+1. Fetch the Feishu doc comments
+2. Match comment quotes against the locally generated timestamped transcript
+3. Build `intro_ranges` from `金句`
+4. Build `delete_ranges` from `删除`
+5. If user wants `v2`, add:
+   - long-pause compression ranges
+   - strict repetition trims
+   - high-confidence filler trims
+6. Export the cut
+7. Save an edit note
 
-## Default behavior
+## Output expectations
 
-If the user asks for a more polished podcast cut and does not specify otherwise:
+Always produce:
 
-- preserve `金句` cold open
-- remove explicit `删除` ranges
-- do one additional tightening pass on obvious interruptions
-- compress long pauses only if the user asks for a more aggressive edit
+- the edited audio file
+- a plain-text edit note beside it
+
+The note should include:
+
+- source doc URL
+- source audio path
+- intro quote ranges
+- delete ranges
+- whether long-pause compression was applied
+- whether filler trimming was applied
+- whether any cut was estimated conservatively
+
+## Tooling notes
+
+Recommended local ASR:
+
+- `faster-whisper` with `large-v3-turbo`
+
+Recommended export path:
+
+- prefer `mp3` if a reliable local encoder is available
+- otherwise fall back to `wav` and explain why
+
+In the maintained local setup for this skill, `ffmpeg` is available and validated for `mp3` export.
+
+## Known limitations
+
+- Feishu API comment anchoring is weaker than the editor UI for exact text-selection recreation.
+- ASR and Feishu text can differ slightly in punctuation, spacing, script style, or wording.
+- Fine trimming of short fillers still benefits from conservative thresholds and human review.

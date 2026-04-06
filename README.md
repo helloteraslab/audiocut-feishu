@@ -1,31 +1,25 @@
 # audiocut-feishu
 
-`audiocut-feishu` is a Codex skill for editing podcast and other spoken-word audio from a Feishu/Lark transcript plus the original source file.
+`audiocut-feishu` is a Codex skill for editing spoken-word audio through a transcript-first workflow:
 
-It is built for workflows where:
+1. generate a high-quality timestamped transcript locally
+2. publish that transcript to a Feishu/Lark doc for review
+3. let a human comment with edit intent such as `删除` and `金句`
+4. cut the original source audio from those comments
 
-- the transcript lives in a Feishu/Lark doc
-- existing comments such as `删除` and `金句` represent edit intent
-- the source audio is local
-- the desired output is one or more polished `m4a` cuts
-
-Typical outputs include:
-
-- `v1`: remove false starts and obvious junk
-- `v2`: remove interruptions, filler segments, and awkward long pauses
-- `v3`: aggressively tighten pacing by compressing long silences
+This skill is designed for podcasts, interviews, voice notes, spoken essays, and other transcript-first editing workflows.
 
 ## What this skill can do
 
 This skill helps Codex:
 
-1. Read a Feishu/Lark transcript document with `lark-cli`
-2. Read existing Feishu comments from that document
-3. Map timestamped transcript text back to the source audio
-4. Prepend `金句` clips as a cold open
-5. Remove `删除` clips from the main body
-6. Detect long silence ranges from the waveform
-7. Export edited `m4a` files and a short edit note
+1. Transcribe a local audio file with a Whisper-family model
+2. Generate fine-grained sentence timestamps
+3. Create a commentable Feishu/Lark transcript doc
+4. Read Feishu comments from that doc
+5. Map `删除` and `金句` comments back to the source audio
+6. Produce a `v1` rough cut or `v2` fine cut
+7. Export an edited audio file plus an edit note
 
 ## Good fit
 
@@ -42,98 +36,244 @@ This skill is not intended for:
 
 - music production
 - multitrack editing
-- EQ, compression, or mastering
-- denoising or audio restoration
+- EQ, compression, mastering, or restoration
+- recreating exact Feishu editor comment-selection behavior through API alone
 
-## Requirements
+## Prerequisites
 
-Before using this skill, make sure you have:
+### Required for all users
 
-- Codex with local skill support
-- `lark-cli` installed and authorized
-- access to the Feishu/Lark transcript doc
-- a local source audio file
-- macOS with `swift` and `AVFoundation`
+- a Codex environment with local skill support
+- Node.js with `npm` and `npx`
+- `lark-cli`
+- a Feishu account
+- completed `lark-cli config init --new`
+- completed `lark-cli auth login`
+- a local source audio file such as `mp3`, `m4a`, or `wav`
 
-This repository assumes the editing machine can run Swift scripts locally.
+### Required for the full transcript-generation workflow
+
+- Python 3
+- a local `faster-whisper` environment
+- internet access for the first model download
+- enough disk space for local Whisper model cache
+
+### Recommended but optional
+
+- `ffmpeg` for more reliable output transcoding, especially `mp3`
+- `WhisperX` if you later want stronger alignment experiments
+
+For this maintained setup, local `ffmpeg` has already been validated and can be used for reliable `mp3` export.
 
 ## Install
 
-Install directly from GitHub:
+Install the skill from GitHub:
 
 ```bash
 npx skills add https://github.com/helloteraslab/audiocut-feishu -y -g
 ```
 
-## Quick start
+Install `lark-cli`:
 
-Ask Codex something like:
-
-```text
-Please use audiocut-feishu to edit this podcast using the Feishu transcript doc and the original local audio file.
+```bash
+npm install -g @larksuite/cli
+npx skills add larksuite/cli -y -g
 ```
 
-Or more specifically:
+Initialize and authorize Feishu:
 
-```text
-Use audiocut-feishu. Read the Feishu doc, prepend all 金句 comments, remove all 删除 comments, and make an aggressive v3 cut.
+```bash
+lark-cli config init --new
+lark-cli auth login
 ```
 
-## 中文使用说明
+## ASR setup
 
-这个 skill 最适合这样的场景：
+The recommended local ASR backend is `faster-whisper`.
 
-- 你已经有一份飞书转写文稿
-- 文稿里最好已经有人加了 `删除` 或 `金句` 评论
-- 你手上还有对应的原始音频文件
+Example installation:
 
-用户在调用这个 skill 时，通常需要提供：
-
-1. 飞书文稿链接
-2. 原始音频文件路径
-3. 你希望输出什么版本
-   - 例如：基础清理版、`v2` 精修版、`v3` 激进压缩版
-
-如果只有文稿，没有音频，这个 skill 只能帮你分析和建议剪辑点，不能真正导出成片。
-
-如果只有音频，没有文稿，这个 skill 只能做静音压缩或部分节奏优化，不能完整利用 `删除` / `金句` 这类评论驱动剪辑。
-
-## 中文提示词模板
-
-你可以直接把下面这段发给 Codex：
-
-```text
-请使用 audiocut-feishu 帮我剪辑这期播客。
-
-飞书文稿链接：
-<在这里粘贴飞书文稿链接>
-
-原始音频文件路径：
-<在这里粘贴本地音频文件路径>
-
-剪辑要求：
-1. 读取文稿中的 删除 和 金句 评论
-2. 把所有 金句 片段复制并放到开头
-3. 删除所有 删除 片段
-4. 再做一版 v2 精修 / v3 激进压缩（按你的需要二选一）
-5. 输出成片音频，并附一份编辑说明
+```bash
+python3 -m venv ~/.venvs/faster-whisper
+source ~/.venvs/faster-whisper/bin/activate
+pip install --upgrade pip
+pip install faster-whisper
 ```
 
-如果你想写得更短，也可以直接说：
+The recommended model is:
 
-```text
-请使用 audiocut-feishu，基于这个飞书文稿和原始音频，输出一版 v3 播客成片。
-```
+- `large-v3-turbo`
 
-## Recommended workflow
+The first run will download the model automatically.
 
-1. Prepare a Feishu transcript doc with speaker timestamps such as `说话人 1 04:40`
-2. Add comments such as:
+## Workflow
+
+### Full mode
+
+Use this when you start from audio and do not yet have a transcript doc.
+
+1. Give Codex a local audio file.
+2. Codex transcribes it locally with `faster-whisper`.
+3. Codex creates a new Feishu doc containing sentence-level timestamps.
+4. You review the doc and comment with labels such as:
    - `删除`
    - `金句`
-3. Provide the original local audio path
-4. Let Codex fetch the doc and comments
-5. Generate one or more edited versions
+   - `修改`
+5. You come back to Codex and ask it to cut the audio from the reviewed doc.
+
+### Simplified mode
+
+Use this when you already have a transcript doc.
+
+1. Give Codex the Feishu doc URL.
+2. Give Codex the local audio file path.
+3. Ask for `v1` or `v2`.
+
+## Version definitions
+
+### `v1` rough cut
+
+`v1` performs only explicit human-comment actions:
+
+- remove content marked with `删除`
+- prepend clips marked with `金句`
+
+It does **not** automatically remove filler words, repetitions, or long pauses.
+
+### `v2` fine cut
+
+`v2` includes everything in `v1`, plus automatic fine trimming:
+
+- compress pauses longer than `1s`
+- remove strict repetitions
+- remove high-confidence filler / connector words with obvious air before or after
+
+## Editing rules
+
+### Long pauses
+
+Default long-pause rule:
+
+- a no-voice pause longer than `1.0s`
+
+Default handling:
+
+- preserve about `0.30s`
+- remove the rest
+
+### Filler and connector words
+
+Typical candidates:
+
+- `然后`
+- `然后呢`
+- `就是`
+- `那个`
+- `这个`
+- `呢`
+- `呀`
+- `对`
+- `嗯`
+- `呃`
+- `啊`
+
+A filler is only removed when:
+
+- it carries little semantic information
+- deleting it does not break the sentence backbone
+- it has clearly audible air before or after it
+
+Suggested high-confidence threshold:
+
+- leading air `>= 0.18s`, or
+- trailing air `>= 0.18s`, or
+- combined air `>= 0.30s`
+
+### Repetition
+
+Two kinds are distinguished:
+
+1. strict repetition
+   - examples: `明显明显`, `我我觉得`, `重复,重复,重复`
+2. near-duplicate sentence repetition
+   - the same meaning is immediately said again
+
+Default behavior:
+
+- strict repetition can be trimmed automatically
+- near-duplicate sentence repetition should prefer explicit human comments
+
+### Cut boundaries
+
+Cuts should land on:
+
+- semantic edges
+- acoustic weak points
+- natural listening boundaries
+
+Default padding:
+
+- before cut: about `0.03s - 0.08s`
+- after cut: about `0.08s - 0.18s`
+
+This is especially important for not chopping off the ends of words.
+
+## Quick start
+
+### English prompt
+
+```text
+Please use audiocut-feishu to turn this audio into a commentable Feishu transcript doc.
+After I review the doc, I will come back and ask for a v1 or v2 cut.
+```
+
+### 中文使用说明
+
+这个 skill 的新流程是：
+
+1. 你先把原始音频发给 Codex
+2. Codex 用本地 Whisper 模型转写，并生成带细粒度时间戳的句级文稿
+3. Codex 自动把这份文稿发到飞书文档里
+4. 你在飞书文档里评论，比如：
+   - `删除`
+   - `金句`
+5. 你再回到 Codex，要求它输出：
+   - `V1 粗剪版`
+   - 或 `V2 细剪版`
+
+### 中文提示词模板
+
+先建文稿时：
+
+```text
+请使用 audiocut-feishu，基于这个音频文件生成一篇可评论的飞书转写文档，并把文档链接发给我。
+```
+
+评论完成后：
+
+```text
+请使用 audiocut-feishu，基于这篇飞书文档的评论剪辑原始音频。
+请告诉我你要输出 v1 粗剪版，还是 v2 细剪版。
+```
+
+如果你已经知道要哪个版本，也可以直接说：
+
+```text
+请使用 audiocut-feishu，基于这篇飞书文档的评论输出 v2 细剪版。
+```
+
+## Output format
+
+Preferred output:
+
+- `mp3`
+
+Fallback output:
+
+- `wav`
+
+If `ffmpeg` is available, Codex should prefer `mp3`.
+If `mp3` export is unavailable on the local machine, Codex should explain why and fall back to a working format.
 
 ## Repository structure
 
@@ -146,71 +286,24 @@ audiocut-feishu/
     └── compose_audio.swift
 ```
 
-## Scripts
+## Known limitations
 
-### `scripts/analyze_silence.swift`
-
-Analyzes the source audio and prints long silence ranges:
-
-```text
-start_seconds<TAB>end_seconds<TAB>duration_seconds
-```
-
-Useful for aggressive edits where pauses longer than 1 second should be shortened.
-
-### `scripts/compose_audio.swift`
-
-Builds a new audio file by:
-
-- prepending selected quote ranges
-- removing selected delete ranges from the body
-
-Example:
-
-```bash
-swift scripts/compose_audio.swift '<INPUT>' '<OUTPUT>' '<INTRO_RANGES>' '<DELETE_RANGES>'
-```
-
-Where ranges are passed as:
-
-```text
-12.0:18.5,65.2:71.0
-```
-
-## Known limitation
-
-Feishu's public API does not reliably reproduce the same fine-grained text selection behavior available in the editor UI for long transcript blocks.
-
-In practice this means:
-
-- reading existing comments works well
-- writing new comments with exact selection precision is not reliably supported
-
-So this skill is best used for:
-
-- reading and acting on existing review comments
-- generating audio edits directly
-- suggesting new cut points in plain text when needed
+- Feishu API comment anchoring is weaker than the editor UI for exact selection replay.
+- ASR text and Feishu comment text may differ slightly in punctuation or wording.
+- `mp3` output depends on a working local encoder such as `ffmpeg`.
+- In this local workflow, `ffmpeg` has been installed and validated for `mp3` export.
 
 ## Privacy notes
 
-This repository contains only:
+This repository should include only:
 
-- the Codex skill definition
-- two Swift helper scripts
+- the skill definition
+- helper scripts
+- documentation
 
-It does **not** need to include:
+It should not include:
 
 - source audio files
-- transcript exports
-- private Feishu document URLs
+- private Feishu doc URLs
 - local machine paths
-
-## Publishing
-
-To publish your own copy:
-
-1. Create a GitHub repository
-2. Push this directory as the repository contents
-3. Test installation using `npx skills add`
-4. Share the repository URL
+- model cache files
