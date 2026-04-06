@@ -3,7 +3,8 @@
 `audiocut-feishu` is a Codex skill for editing spoken-word audio through a transcript-first workflow:
 
 1. generate a high-quality timestamped transcript locally
-2. publish that transcript to a Feishu/Lark doc for review
+2. identify speakers when multiple people are talking
+3. publish that transcript to a Feishu/Lark doc for review
 3. let a human comment with edit intent such as `删除` and `金句`
 4. cut the original source audio from those comments
 
@@ -15,7 +16,8 @@ This skill helps Codex:
 
 1. Transcribe a local audio file with a Whisper-family model
 2. Generate fine-grained sentence timestamps
-3. Create a commentable Feishu/Lark transcript doc
+3. Run speaker diarization for multi-speaker audio
+4. Create a commentable Feishu/Lark transcript doc
 4. Read Feishu comments from that doc
 5. Map `删除` and `金句` comments back to the source audio
 6. Produce a `v1` rough cut or `v2` fine cut
@@ -55,6 +57,8 @@ This skill is not intended for:
 
 - Python 3
 - a local `faster-whisper` environment
+- `pyannote.audio` if you want multi-speaker transcript docs
+- a Hugging Face token with access to `pyannote/speaker-diarization-community-1`
 - internet access for the first model download
 - enough disk space for local Whisper model cache
 
@@ -114,7 +118,8 @@ Use this when you start from audio and do not yet have a transcript doc.
 
 1. Give Codex a local audio file.
 2. Codex transcribes it locally with `faster-whisper`.
-3. Codex creates a new Feishu doc containing sentence-level timestamps.
+3. Codex runs speaker diarization when the audio contains multiple speakers.
+4. Codex creates a new Feishu doc containing sentence-level timestamps and speaker labels.
 4. You review the doc and comment with labels such as:
    - `删除`
    - `金句`
@@ -150,6 +155,8 @@ It does **not** automatically remove filler words, repetitions, or long pauses.
 
 The repository also includes a helper for strict repetition detection:
 
+- `scripts/run_pyannote_diarization.py`
+- `scripts/build_feishu_transcript_doc.py`
 - `scripts/detect_strict_repetition.py`
 - `scripts/finalize_v2_plan.py`
 - `scripts/render_audio_plan_ffmpeg.py`
@@ -166,6 +173,22 @@ The intended `v2` execution order is:
 2. long-pause compression
 3. high-confidence filler trimming
 4. strict repetition trimming
+
+For multi-speaker transcript docs, the intended transcript-generation order is:
+
+1. transcribe with `faster-whisper`
+2. run `scripts/run_pyannote_diarization.py`
+3. build the Feishu-ready markdown with `scripts/build_feishu_transcript_doc.py`
+
+The transcript doc should prefer this format for multi-speaker review:
+
+```text
+[0001] 说话人 A 00:01.060 - 00:03.960
+Hello，这是一个测试文件
+
+[0002] 说话人 B 00:03.960 - 00:08.320
+第一步我要测试的关于停顿功能
+```
 
 ## Editing rules
 

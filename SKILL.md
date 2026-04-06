@@ -9,6 +9,7 @@ This skill is for a transcript-first spoken-audio editing workflow where:
 
 - the user provides a local source audio file
 - Codex generates a fine-grained transcript locally
+- Codex runs speaker diarization when multiple people are present
 - Codex publishes a commentable transcript doc to Feishu/Lark
 - the user reviews that doc and comments with edit intent
 - Codex returns to the commented doc and performs the cut
@@ -18,6 +19,7 @@ This skill is for a transcript-first spoken-audio editing workflow where:
 Use this skill when the user asks to:
 
 - create a commentable Feishu transcript doc from local audio
+- create a commentable multi-speaker Feishu transcript doc from local audio
 - cut audio from Feishu comments such as `删除` and `金句`
 - produce a rough `v1` cut or a finer `v2` cut
 - tighten spoken-word pacing by removing long pauses, strict repetitions, and high-confidence filler words
@@ -37,6 +39,7 @@ For full mode:
 - working `lark-cli` configuration
 - user-authorized Feishu account
 - local ASR runtime (`faster-whisper`)
+- `pyannote.audio` and a Hugging Face token for multi-speaker diarization
 
 For simplified mode:
 
@@ -49,13 +52,17 @@ For simplified mode:
 
 1. User gives Codex a local audio file.
 2. Codex runs a local Whisper-family ASR model and generates fine-grained timestamps.
-3. Codex creates a new Feishu doc and writes the transcript there in a comment-friendly layout.
+3. Codex runs speaker diarization when the audio contains multiple speakers.
+4. Codex creates a new Feishu doc and writes the transcript there in a comment-friendly layout.
 
 Preferred transcript layout:
 
 ```text
-[0001] 00:01.060 - 00:03.960  Hello,这是一个测试文件
-[0002] 00:03.960 - 00:08.320  第一步我要测试的关于停顿功能
+[0001] 说话人 A 00:01.060 - 00:03.960
+Hello,这是一个测试文件
+
+[0002] 说话人 B 00:03.960 - 00:08.320
+第一步我要测试的关于停顿功能
 ```
 
 Each sentence should be on its own line so the user can comment directly on that line.
@@ -100,6 +107,8 @@ Start with all `v1` behavior, then additionally apply the editing rules below:
 
 Use the strict repetition helper when available:
 
+- `scripts/run_pyannote_diarization.py`
+- `scripts/build_feishu_transcript_doc.py`
 - `scripts/detect_strict_repetition.py`
 - `scripts/finalize_v2_plan.py`
 - `scripts/render_audio_plan_ffmpeg.py`
@@ -222,9 +231,11 @@ For `金句`:
 ### A. If no transcript doc exists yet
 
 1. Transcribe the audio locally with `faster-whisper`
-2. Save a machine-readable timestamp file locally
-3. Create a Feishu doc from the timestamped transcript
-4. Give the doc link to the user for comment review
+2. If the audio contains multiple speakers, run diarization with `scripts/run_pyannote_diarization.py`
+3. Save a machine-readable timestamp file locally
+4. Build the Feishu-ready markdown with `scripts/build_feishu_transcript_doc.py`
+5. Create a Feishu doc from the timestamped transcript
+6. Give the doc link to the user for comment review
 
 ### B. If the user already reviewed the doc
 
