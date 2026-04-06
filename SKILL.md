@@ -5,24 +5,34 @@ description: Use this skill when the user wants to edit spoken-word audio by gen
 
 # Audiocut Feishu
 
-This skill is for a transcript-first spoken-audio editing workflow where:
+This skill supports two layers:
+
+- a simple base workflow for most users
+- an optional multi-speaker workflow when the user explicitly wants speaker labels
+
+In base workflow:
 
 - the user provides a local source audio file
 - Codex generates a fine-grained transcript locally
-- Codex runs speaker diarization when multiple people are present
 - Codex publishes a commentable transcript doc to Feishu/Lark
 - the user reviews that doc and comments with edit intent
 - Codex returns to the commented doc and performs the cut
+
+In optional multi-speaker workflow:
+
+- Codex also runs speaker diarization
+- the transcript doc includes labels such as `说话人 A` / `说话人 B`
 
 ## When to use
 
 Use this skill when the user asks to:
 
 - create a commentable Feishu transcript doc from local audio
-- create a commentable multi-speaker Feishu transcript doc from local audio
 - cut audio from Feishu comments such as `删除` and `金句`
 - produce a rough `v1` cut or a finer `v2` cut
 - tighten spoken-word pacing by removing long pauses, strict repetitions, and high-confidence filler words
+
+Only enable multi-speaker diarization when the user explicitly asks for speaker separation or a multi-speaker transcript doc.
 
 Do not use this skill for:
 
@@ -33,13 +43,19 @@ Do not use this skill for:
 
 ## Required inputs
 
-For full mode:
+For base mode:
 
 - local audio file path
 - working `lark-cli` configuration
 - user-authorized Feishu account
 - local ASR runtime (`faster-whisper`)
-- `pyannote.audio` and a Hugging Face token for multi-speaker diarization
+
+For optional multi-speaker mode:
+
+- everything in base mode
+- `pyannote.audio`
+- a Hugging Face token for multi-speaker diarization
+- accepted model terms for `pyannote/speaker-diarization-community-1`
 
 For simplified mode:
 
@@ -52,10 +68,18 @@ For simplified mode:
 
 1. User gives Codex a local audio file.
 2. Codex runs a local Whisper-family ASR model and generates fine-grained timestamps.
-3. Codex runs speaker diarization when the audio contains multiple speakers.
-4. Codex creates a new Feishu doc and writes the transcript there in a comment-friendly layout.
+3. By default, Codex creates a new Feishu doc and writes the transcript there in a comment-friendly layout.
+4. If the user explicitly wants speaker separation, Codex also runs diarization and writes a multi-speaker layout.
 
 Preferred transcript layout:
+
+```text
+[0001] 00:01.060 - 00:03.960  Hello,这是一个测试文件
+```
+
+Each sentence should be on its own line so the user can comment directly on that line.
+
+Preferred multi-speaker layout:
 
 ```text
 [0001] 说话人 A 00:01.060 - 00:03.960
@@ -64,8 +88,6 @@ Hello,这是一个测试文件
 [0002] 说话人 B 00:03.960 - 00:08.320
 第一步我要测试的关于停顿功能
 ```
-
-Each sentence should be on its own line so the user can comment directly on that line.
 
 ### Phase 2: Human review in Feishu
 
@@ -105,7 +127,7 @@ Start with all `v1` behavior, then additionally apply the editing rules below:
  - remove high-confidence filler / connector words with long air before or after
  - remove strict repetitions
 
-Use the strict repetition helper when available:
+Use these helper scripts when available:
 
 - `scripts/run_pyannote_diarization.py`
 - `scripts/build_feishu_transcript_doc.py`
@@ -231,11 +253,17 @@ For `金句`:
 ### A. If no transcript doc exists yet
 
 1. Transcribe the audio locally with `faster-whisper`
-2. If the audio contains multiple speakers, run diarization with `scripts/run_pyannote_diarization.py`
-3. Save a machine-readable timestamp file locally
-4. Build the Feishu-ready markdown with `scripts/build_feishu_transcript_doc.py`
-5. Create a Feishu doc from the timestamped transcript
-6. Give the doc link to the user for comment review
+2. Save a machine-readable timestamp file locally
+3. Build the Feishu-ready markdown with `scripts/build_feishu_transcript_doc.py`
+4. Create a Feishu doc from the timestamped transcript
+5. Give the doc link to the user for comment review
+
+Only if the user explicitly asks for speaker labels:
+
+1. run diarization with `scripts/run_pyannote_diarization.py`
+2. rebuild the transcript doc with multi-speaker labels
+
+The optional diarization step reads the Hugging Face token from `HF_TOKEN` or `HUGGINGFACE_TOKEN`.
 
 ### B. If the user already reviewed the doc
 
@@ -284,6 +312,10 @@ The note should include:
 Recommended local ASR:
 
 - `faster-whisper` with `large-v3-turbo`
+
+Optional multi-speaker backend:
+
+- `pyannote.audio` with `pyannote/speaker-diarization-community-1`
 
 Recommended export path:
 

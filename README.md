@@ -1,27 +1,56 @@
 # audiocut-feishu
 
-`audiocut-feishu` is a Codex skill for editing spoken-word audio through a transcript-first workflow:
+`audiocut-feishu` is a Codex skill for transcript-first spoken-word editing:
 
-1. generate a high-quality timestamped transcript locally
-2. identify speakers when multiple people are talking
-3. publish that transcript to a Feishu/Lark doc for review
+1. generate a timestamped transcript locally
+2. publish that transcript to a Feishu/Lark doc for review
 3. let a human comment with edit intent such as `删除` and `金句`
-4. cut the original source audio from those comments
+4. cut the original audio from those comments
 
 This skill is designed for podcasts, interviews, voice notes, spoken essays, and other transcript-first editing workflows.
 
+## Two modes
+
+### Base mode
+
+This is the default mode and should feel simple:
+
+1. give Codex an audio file
+2. Codex transcribes it locally
+3. Codex creates a commentable Feishu doc
+4. you review the doc and add comments such as `删除` and `金句`
+5. Codex exports a `v1` rough cut or `v2` fine cut
+
+Base mode does **not** require speaker diarization.
+
+### Optional multi-speaker mode
+
+Use this only when you want the generated Feishu doc to distinguish different speakers.
+
+In this mode, Codex additionally:
+
+1. runs speaker diarization
+2. labels transcript lines as `说话人 A` / `说话人 B` / ...
+3. publishes a multi-speaker transcript doc for review
+
+This mode is optional and should only be enabled when the user explicitly asks for speaker separation.
+
 ## What this skill can do
 
-This skill helps Codex:
+In base mode:
 
 1. Transcribe a local audio file with a Whisper-family model
 2. Generate fine-grained sentence timestamps
-3. Run speaker diarization for multi-speaker audio
-4. Create a commentable Feishu/Lark transcript doc
+3. Create a commentable Feishu/Lark transcript doc
 4. Read Feishu comments from that doc
 5. Map `删除` and `金句` comments back to the source audio
 6. Produce a `v1` rough cut or `v2` fine cut
 7. Export an edited audio file plus an edit note
+
+In optional multi-speaker mode:
+
+1. Run speaker diarization for multi-speaker audio
+2. Build a transcript doc with `说话人 A / B / ...` labels
 
 ## Good fit
 
@@ -53,14 +82,18 @@ This skill is not intended for:
 - completed `lark-cli auth login`
 - a local source audio file such as `mp3`, `m4a`, or `wav`
 
-### Required for the full transcript-generation workflow
+### Required for base mode
 
 - Python 3
 - a local `faster-whisper` environment
-- `pyannote.audio` if you want multi-speaker transcript docs
-- a Hugging Face token with access to `pyannote/speaker-diarization-community-1`
 - internet access for the first model download
-- enough disk space for local Whisper model cache
+- enough disk space for the local Whisper model cache
+
+### Required only for optional multi-speaker mode
+
+- `pyannote.audio`
+- a Hugging Face token with access to `pyannote/speaker-diarization-community-1`
+- accepted model terms for `pyannote/speaker-diarization-community-1` on Hugging Face
 
 ### Recommended but optional
 
@@ -91,7 +124,7 @@ lark-cli config init --new
 lark-cli auth login
 ```
 
-## ASR setup
+## Base mode setup
 
 The recommended local ASR backend is `faster-whisper`.
 
@@ -104,27 +137,59 @@ pip install --upgrade pip
 pip install faster-whisper
 ```
 
-The recommended model is:
+Recommended model:
 
 - `large-v3-turbo`
 
 The first run will download the model automatically.
 
+## Optional multi-speaker setup
+
+Only do this if you explicitly want the transcript doc to distinguish speakers.
+
+1. Create a Hugging Face account
+2. Accept the model terms on:
+   - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+3. Create a Hugging Face token
+4. Set `HF_TOKEN` or `HUGGINGFACE_TOKEN`
+5. Install a compatible `pyannote.audio` environment
+
+The diarization step reads the token from `HF_TOKEN` or `HUGGINGFACE_TOKEN`.
+
 ## Workflow
 
-### Full mode
+### Base mode
 
-Use this when you start from audio and do not yet have a transcript doc.
+Use this when you want the simplest flow.
 
 1. Give Codex a local audio file.
 2. Codex transcribes it locally with `faster-whisper`.
-3. Codex runs speaker diarization when the audio contains multiple speakers.
-4. Codex creates a new Feishu doc containing sentence-level timestamps and speaker labels.
+3. Codex creates a new Feishu doc containing sentence-level timestamps.
 4. You review the doc and comment with labels such as:
    - `删除`
    - `金句`
    - `修改`
 5. You come back to Codex and ask it to cut the audio from the reviewed doc.
+
+### Optional multi-speaker mode
+
+Use this only when you want the transcript doc to label speakers.
+
+1. Give Codex a local audio file.
+2. Explicitly ask for a multi-speaker transcript doc.
+3. Codex transcribes the audio.
+4. Codex runs speaker diarization.
+5. Codex creates a Feishu doc with speaker labels.
+
+Preferred layout:
+
+```text
+[0001] 说话人 A 00:01.060 - 00:03.960
+Hello，这是一个测试文件
+
+[0002] 说话人 B 00:03.960 - 00:08.320
+第一步我要测试的关于停顿功能
+```
 
 ### Simplified mode
 
@@ -153,19 +218,13 @@ It does **not** automatically remove filler words, repetitions, or long pauses.
 - remove high-confidence filler / connector words with obvious air before or after
 - remove strict repetitions
 
-The repository also includes a helper for strict repetition detection:
+The repository includes these helper scripts:
 
 - `scripts/run_pyannote_diarization.py`
 - `scripts/build_feishu_transcript_doc.py`
 - `scripts/detect_strict_repetition.py`
 - `scripts/finalize_v2_plan.py`
 - `scripts/render_audio_plan_ffmpeg.py`
-
-It is designed to catch cases like `重复,重复,重复,重复学习` and preserve the final surviving copy that naturally connects into the real sentence.
-
-In the maintained `v2` flow, run strict repetition detection first, then use `scripts/finalize_v2_plan.py` to merge those ranges into the final `delete_ranges` before export.
-
-For stable `wav` / `mp3` export in the maintained setup, render the finalized plan with `scripts/render_audio_plan_ffmpeg.py`.
 
 The intended `v2` execution order is:
 
@@ -174,21 +233,11 @@ The intended `v2` execution order is:
 3. high-confidence filler trimming
 4. strict repetition trimming
 
-For multi-speaker transcript docs, the intended transcript-generation order is:
+For strict repetition, the maintained flow is:
 
-1. transcribe with `faster-whisper`
-2. run `scripts/run_pyannote_diarization.py`
-3. build the Feishu-ready markdown with `scripts/build_feishu_transcript_doc.py`
-
-The transcript doc should prefer this format for multi-speaker review:
-
-```text
-[0001] 说话人 A 00:01.060 - 00:03.960
-Hello，这是一个测试文件
-
-[0002] 说话人 B 00:03.960 - 00:08.320
-第一步我要测试的关于停顿功能
-```
+1. detect repetition with `scripts/detect_strict_repetition.py`
+2. merge those ranges into the final plan with `scripts/finalize_v2_plan.py`
+3. render the result with `scripts/render_audio_plan_ffmpeg.py`
 
 ## Editing rules
 
@@ -236,19 +285,14 @@ Suggested high-confidence threshold:
 Two kinds are distinguished:
 
 1. strict repetition
-   - examples: `明显明显`, `我我觉得`, `重复,重复,重复`
 2. near-duplicate sentence repetition
-   - the same meaning is immediately said again
 
 Default behavior:
 
 - strict repetition can be trimmed automatically
 - near-duplicate sentence repetition should prefer explicit human comments
 
-For strict repetition, the intended behavior is:
-
-- remove the leading repeated copies
-- preserve the last copy when it connects naturally into the following valid phrase
+For strict repetition, preserve the last surviving copy when it connects naturally into the following valid phrase.
 
 ### Cut boundaries
 
@@ -263,8 +307,6 @@ Default padding:
 - before cut: about `0.03s - 0.08s`
 - after cut: about `0.08s - 0.18s`
 
-This is especially important for not chopping off the ends of words.
-
 ## Quick start
 
 ### English prompt
@@ -276,81 +318,20 @@ After I review the doc, I will come back and ask for a v1 or v2 cut.
 
 ### 中文使用说明
 
-这个 skill 的新流程是：
+基础模式：
 
-1. 你先把原始音频发给 Codex
-2. Codex 用本地 Whisper 模型转写，并生成带细粒度时间戳的句级文稿
-3. Codex 自动把这份文稿发到飞书文档里
-4. 你在飞书文档里评论，比如：
+1. 先把原始音频发给 Codex
+2. Codex 用本地模型转写，并生成带时间戳的句级文稿
+3. Codex 自动把文稿发到飞书文档里
+4. 你在飞书文档里评论：
    - `删除`
    - `金句`
 5. 你再回到 Codex，要求它输出：
    - `V1 粗剪版`
    - 或 `V2 细剪版`
 
-### 中文提示词模板
-
-先建文稿时：
+如果你明确想区分多个说话人，再额外说明：
 
 ```text
-请使用 audiocut-feishu，基于这个音频文件生成一篇可评论的飞书转写文档，并把文档链接发给我。
+请生成一个带说话人区分的飞书转写文稿。
 ```
-
-评论完成后：
-
-```text
-请使用 audiocut-feishu，基于这篇飞书文档的评论剪辑原始音频。
-请告诉我你要输出 v1 粗剪版，还是 v2 细剪版。
-```
-
-如果你已经知道要哪个版本，也可以直接说：
-
-```text
-请使用 audiocut-feishu，基于这篇飞书文档的评论输出 v2 细剪版。
-```
-
-## Output format
-
-Preferred output:
-
-- `mp3`
-
-Fallback output:
-
-- `wav`
-
-If `ffmpeg` is available, Codex should prefer `mp3`.
-If `mp3` export is unavailable on the local machine, Codex should explain why and fall back to a working format.
-
-## Repository structure
-
-```text
-audiocut-feishu/
-├── README.md
-├── SKILL.md
-└── scripts/
-    ├── analyze_silence.swift
-    └── compose_audio.swift
-```
-
-## Known limitations
-
-- Feishu API comment anchoring is weaker than the editor UI for exact selection replay.
-- ASR text and Feishu comment text may differ slightly in punctuation or wording.
-- `mp3` output depends on a working local encoder such as `ffmpeg`.
-- In this local workflow, `ffmpeg` has been installed and validated for `mp3` export.
-
-## Privacy notes
-
-This repository should include only:
-
-- the skill definition
-- helper scripts
-- documentation
-
-It should not include:
-
-- source audio files
-- private Feishu doc URLs
-- local machine paths
-- model cache files
